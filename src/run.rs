@@ -116,8 +116,8 @@ impl Program {
                     }
                     "swap" => {
                         if let (Some(a), Some(b)) = (self.stack.pop(), self.stack.pop()) {
-                            self.stack.push(b);
                             self.stack.push(a);
+                            self.stack.push(b);
                         } else {
                             return error!("cannot perform {id:?} due to stack underflow")
                         }

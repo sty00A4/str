@@ -29,7 +29,7 @@ fn main() {
                 match lexer::lex(input) {
                     Ok(instrs) => match program.run(instrs) {
                         Ok(_) => println!("{}", program.stack),
-                        Err(e) => { eprintln!("{e}") }
+                        Err(e) => { eprintln!("{}\n{e}", program.stack) }
                     }
                     Err(e) => { eprintln!("{e}") }
                 }
