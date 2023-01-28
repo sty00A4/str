@@ -215,6 +215,42 @@ impl Program {
         let mut not = MacroOverload::new();
         not.def(vec![Type::Boolean], MacroType::Operation(_not));
         macros.insert(String::from("not"), not);
+        // eq
+        let mut eq = MacroOverload::new();
+        eq.def(vec![Type::Any, Type::Any], MacroType::Operation(_eq));
+        macros.insert(String::from("="), eq);
+        // ne
+        let mut ne = MacroOverload::new();
+        ne.def(vec![Type::Any, Type::Any], MacroType::Operation(_ne));
+        macros.insert(String::from("!="), ne);
+        // lt
+        let mut lt = MacroOverload::new();
+        lt.def(vec![Type::Int, Type::Int], MacroType::Operation(_lt));
+        lt.def(vec![Type::Float, Type::Float], MacroType::Operation(_lt));
+        lt.def(vec![Type::Int, Type::Float], MacroType::Operation(_lt));
+        lt.def(vec![Type::Float, Type::Int], MacroType::Operation(_lt));
+        macros.insert(String::from("<"), lt);
+        // gt
+        let mut gt = MacroOverload::new();
+        gt.def(vec![Type::Int, Type::Int], MacroType::Operation(_gt));
+        gt.def(vec![Type::Float, Type::Float], MacroType::Operation(_gt));
+        gt.def(vec![Type::Int, Type::Float], MacroType::Operation(_gt));
+        gt.def(vec![Type::Float, Type::Int], MacroType::Operation(_gt));
+        macros.insert(String::from(">"), gt);
+        // le
+        let mut le = MacroOverload::new();
+        le.def(vec![Type::Int, Type::Int], MacroType::Operation(_le));
+        le.def(vec![Type::Float, Type::Float], MacroType::Operation(_le));
+        le.def(vec![Type::Int, Type::Float], MacroType::Operation(_le));
+        le.def(vec![Type::Float, Type::Int], MacroType::Operation(_le));
+        macros.insert(String::from("<="), le);
+        // ge
+        let mut ge = MacroOverload::new();
+        ge.def(vec![Type::Int, Type::Int], MacroType::Operation(_ge));
+        ge.def(vec![Type::Float, Type::Float], MacroType::Operation(_ge));
+        ge.def(vec![Type::Int, Type::Float], MacroType::Operation(_ge));
+        ge.def(vec![Type::Float, Type::Int], MacroType::Operation(_ge));
+        macros.insert(String::from(">="), ge);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -336,6 +372,60 @@ fn _not(program: &mut Program) -> Result<(), Error> {
     let a = program.stack.pop().unwrap();
     match a {
         Value::Boolean(v) => program.stack.push(Value::Boolean(!v)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _eq(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    program.stack.push(Value::Boolean(a == b));
+    Ok(())
+}
+fn _ne(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    program.stack.push(Value::Boolean(a != b));
+    Ok(())
+}
+fn _lt(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Boolean(v1 < v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Boolean(v1 < v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Boolean((int as f64) < float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Boolean(float < int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _gt(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Boolean(v1 > v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Boolean(v1 > v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Boolean(int as f64 > float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Boolean(float > int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _le(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Boolean(v1 <= v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Boolean(v1 <= v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Boolean(int as f64 <= float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Boolean(float <= int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _ge(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Boolean(v1 >= v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Boolean(v1 >= v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Boolean(int as f64 >= float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Boolean(float >= int as f64)),
         _ => panic!("type checking error!!!")
     }
     Ok(())
