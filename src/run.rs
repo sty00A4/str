@@ -159,6 +159,42 @@ impl Program {
         let mut swap = MacroOverload::new();
         swap.def(vec![Type::Any, Type::Any], MacroType::Operation(_swap));
         macros.insert(String::from("swap"), swap);
+        // over
+        let mut over = MacroOverload::new();
+        over.def(vec![Type::Any, Type::Any], MacroType::Operation(_over));
+        macros.insert(String::from("over"), over);
+        // add
+        let mut add = MacroOverload::new();
+        add.def(vec![Type::Int, Type::Int], MacroType::Operation(_add));
+        add.def(vec![Type::Float, Type::Float], MacroType::Operation(_add));
+        add.def(vec![Type::Int, Type::Float], MacroType::Operation(_add));
+        add.def(vec![Type::Float, Type::Int], MacroType::Operation(_add));
+        add.def(vec![Type::String, Type::String], MacroType::Operation(_add));
+        add.def(vec![Type::String, Type::Char], MacroType::Operation(_add));
+        macros.insert(String::from("+"), add);
+        // sub
+        let mut sub = MacroOverload::new();
+        sub.def(vec![Type::Int, Type::Int], MacroType::Operation(_sub));
+        sub.def(vec![Type::Float, Type::Float], MacroType::Operation(_sub));
+        sub.def(vec![Type::Int, Type::Float], MacroType::Operation(_sub));
+        sub.def(vec![Type::Float, Type::Int], MacroType::Operation(_sub));
+        macros.insert(String::from("-"), sub);
+        // mult
+        let mut mult = MacroOverload::new();
+        mult.def(vec![Type::Int, Type::Int], MacroType::Operation(_mult));
+        mult.def(vec![Type::Float, Type::Float], MacroType::Operation(_mult));
+        mult.def(vec![Type::Int, Type::Float], MacroType::Operation(_mult));
+        mult.def(vec![Type::Float, Type::Int], MacroType::Operation(_mult));
+        mult.def(vec![Type::String, Type::Int], MacroType::Operation(_mult));
+        mult.def(vec![Type::Char, Type::Int], MacroType::Operation(_mult));
+        macros.insert(String::from("*"), mult);
+        // div
+        let mut div = MacroOverload::new();
+        div.def(vec![Type::Int, Type::Int], MacroType::Operation(_div));
+        div.def(vec![Type::Float, Type::Float], MacroType::Operation(_div));
+        div.def(vec![Type::Int, Type::Float], MacroType::Operation(_div));
+        div.def(vec![Type::Float, Type::Int], MacroType::Operation(_div));
+        macros.insert(String::from("/"), div);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -177,5 +213,64 @@ fn _swap(program: &mut Program) -> Result<(), Error> {
     let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
     program.stack.push(b);
     program.stack.push(a);
+    Ok(())
+}
+fn _over(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    let c = a.clone();
+    program.stack.push(a);
+    program.stack.push(b);
+    program.stack.push(c);
+    Ok(())
+}
+fn _add(program: &mut Program) -> Result<(), Error> {
+    let (mut b, mut a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a.clone(), b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Int(v1 + v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 + v2)),
+        (Value::Int(int), Value::Float(float)) |
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(int as f64 + float)),
+        (Value::String(v1), Value::String(v2)) => program.stack.push(Value::String(v1 + &v2)),
+        (Value::String(mut v1), Value::Char(v2)) => {
+            v1.push(v2);
+            program.stack.push(Value::String(v1));
+        }
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _sub(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Int(v1 - v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 - v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float(int as f64 - float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(float - int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _mult(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Int(v1 * v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 * v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float(int as f64 * float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(float * int as f64)),
+        (Value::String(s), Value::Int(rep)) => program.stack.push(Value::String(s.repeat(rep.max(0) as usize))),
+        (Value::Char(c), Value::Int(rep)) => program.stack.push(Value::String(c.to_string().repeat(rep.max(0) as usize))),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _div(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Float(v1 as f64 / v2 as f64)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 / v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float(int as f64 / float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(float / int as f64)),
+        _ => panic!("type checking error!!!")
+    }
     Ok(())
 }
