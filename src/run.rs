@@ -1,35 +1,9 @@
-use std::{fmt::{Display, Debug}, collections::HashMap};
+use std::{fmt::{Display, Debug}, collections::HashMap, hash::Hash};
 
 use crate::{lexer::{Instr, Position, Token}, error::{Error}};
 use crate::error;
 use crate::error_pos;
-
-#[derive(Clone, PartialEq)]
-pub enum Value {
-    String(String), Char(char), Int(i64), Float(f64), Boolean(bool)
-}
-impl Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(string) => write!(f, "{string:?}"),
-            Self::Char(char) => write!(f, "{char:?}"),
-            Self::Int(int) => write!(f, "{int:?}"),
-            Self::Float(float) => write!(f, "{float:?}"),
-            Self::Boolean(boolean) => write!(f, "{boolean:?}"),
-        }
-    }
-}
-impl Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(string) => write!(f, "{string}"),
-            Self::Char(char) => write!(f, "{char}"),
-            Self::Int(int) => write!(f, "{int}"),
-            Self::Float(float) => write!(f, "{float}"),
-            Self::Boolean(boolean) => write!(f, "{boolean}"),
-        }
-    }
-}
+use crate::value::{Type, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stack {
@@ -46,6 +20,7 @@ impl Stack {
     pub fn peek(&self) -> Option<&Value> {
         self.stack.last()
     }
+    pub fn len(&self) -> usize { self.stack.len() }
 }
 impl Display for Stack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -53,12 +28,62 @@ impl Display for Stack {
     }
 }
 
+pub enum MacroType {
+    Macro(Vec<Token>), Operation(fn(&mut Program) -> Result<(), Error>)
+}
+
+pub struct MacroOverload {
+    macros: HashMap<Vec<Type>, MacroType>
+}
+impl MacroOverload {
+    pub fn new() -> Self { Self { macros: HashMap::new() } }
+    pub fn from(args: Vec<Type>, macro_type: MacroType) -> Self {
+        let mut macros = HashMap::new();
+        macros.insert(args, macro_type);
+        Self { macros }
+    }
+    pub fn get(&self, stack: &Stack) -> Option<&MacroType> {
+        'macros: for (types, macro_type) in self.macros.iter() {
+            if stack.len() >= types.len() {
+                for (idx, typ) in types.iter().rev().enumerate() {
+                    if &stack.stack[stack.len() - 1 - idx].typ() != typ {
+                        continue 'macros;
+                    }
+                }
+                return Some(macro_type)
+            }
+        }
+        None
+    }
+    pub fn def(&mut self, args: Vec<Type>, macro_type: MacroType) -> Option<MacroType> {
+        self.macros.insert(args, macro_type)
+    }
+    pub fn display(&self, id: &String) -> String {
+        let mut string = String::new();
+        for (types, macro_type) in self.macros.iter() {
+            string.push('[');
+            string.push_str(types.iter().map(|typ| typ.to_string()).collect::<Vec<String>>().join(" ").as_str());
+            string.push_str("] ");
+            string.push_str(id.as_str());
+        }
+        string
+    }
+}
+
 pub struct Program {
     pub vars: HashMap<String, Value>,
+    pub macros: HashMap<String, MacroOverload>,
     pub stack: Stack
 }
 impl Program {
-    pub fn new() -> Self { Self { vars: HashMap::new(), stack: Stack::new() } }
+    pub fn new() -> Self { Self { vars: HashMap::new(), macros: HashMap::new(), stack: Stack::new() } }
+    pub fn display_macro(&self, id: &String) -> String {
+        if let Some(macro_overload) = self.macros.get(id) {
+            macro_overload.display(id)
+        } else {
+            String::from("no definition found")
+        }
+    }
     pub fn run(&mut self, tokens: Vec<Token>) -> Result<(), Error> {
         let mut idx = 0;
         for token in tokens {
@@ -101,31 +126,16 @@ impl Program {
                     }
                     _ => return error_pos!(&token.pos, "expected identifier or copy-to-indentifiers, got {}", token.instr.name())
                 }
-                Instr::ID(id) => match id.as_str() {
-                    "print" => {
-                        if let Some(value) = self.stack.pop() {
-                            println!("{value}");
+                Instr::ID(id) => match self.macros.get(&id) {
+                    Some(macros) => match macros.get(&self.stack) {
+                        Some(macro_type) => match macro_type {
+                            MacroType::Macro(tokens) => self.run(tokens.clone())?,
+                            MacroType::Operation(func) => func(self)?,
                         }
+                        None => return error_pos!(&token.pos,
+                            "no macro definition {id:?} found with current stack, following macros are defined:\n{}", self.display_macro(&id))
                     }
-                    "drop" => {
-                        self.stack.pop();
-                    }
-                    "copy" => {
-                        if let Some(a) = self.stack.peek() {
-                            self.stack.push(a.clone());
-                        } else {
-                            return error_pos!(&token.pos, "cannot perform {id:?} due to stack underflow")
-                        }
-                    }
-                    "swap" => {
-                        if let (Some(a), Some(b)) = (self.stack.pop(), self.stack.pop()) {
-                            self.stack.push(a);
-                            self.stack.push(b);
-                        } else {
-                            return error_pos!(&token.pos, "cannot perform {id:?} due to stack underflow")
-                        }
-                    }
-                    _ => match self.vars.remove(&id) {
+                    None => match self.vars.remove(&id) {
                         Some(value) => self.stack.push(value),
                         None => return error_pos!(&token.pos, "unknown id {id:?}")
                     }
@@ -135,4 +145,33 @@ impl Program {
         }
         Ok(())
     }
+    pub fn std_program() -> Self {
+        let mut macros = HashMap::new();
+        // drop
+        let mut drop = MacroOverload::new();
+        drop.def(vec![Type::Any], MacroType::Operation(_drop));
+        macros.insert(String::from("drop"), drop);
+        // copy
+        let mut copy = MacroOverload::new();
+        copy.def(vec![Type::Any], MacroType::Operation(_copy));
+        macros.insert(String::from("copy"), copy);
+
+        Self { vars: HashMap::new(), macros, stack: Stack::new() }
+    }
+}
+
+fn _drop(program: &mut Program) -> Result<(), Error> {
+    program.stack.pop();
+    Ok(())
+}
+fn _copy(program: &mut Program) -> Result<(), Error> {
+    let a = program.stack.peek().unwrap();
+    program.stack.push(a.clone());
+    Ok(())
+}
+fn _swap(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    program.stack.push(b);
+    program.stack.push(a);
+    Ok(())
 }

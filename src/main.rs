@@ -3,6 +3,7 @@ use std::{env, process::exit, io::{stdout, Write, stdin}};
 
 mod error;
 mod lexer;
+mod value;
 mod run;
 
 #[macro_export]
@@ -31,7 +32,7 @@ fn main() {
     match args.next() {
         Some(arg) => { eprintln!("unrecognized argument {arg:?}"); exit(1) }
         None => {
-            let mut program = run::Program::new();
+            let mut program = run::Program::std_program();
             let path = &"<stdin>".to_string();
             loop {
                 let mut input = String::new();
