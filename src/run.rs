@@ -65,6 +65,7 @@ impl MacroOverload {
             string.push_str(types.iter().map(|typ| typ.to_string()).collect::<Vec<String>>().join(" ").as_str());
             string.push_str("] ");
             string.push_str(id.as_str());
+            string.push('\n');
         }
         string
     }
@@ -195,6 +196,13 @@ impl Program {
         div.def(vec![Type::Int, Type::Float], MacroType::Operation(_div));
         div.def(vec![Type::Float, Type::Int], MacroType::Operation(_div));
         macros.insert(String::from("/"), div);
+        // mod
+        let mut module = MacroOverload::new();
+        module.def(vec![Type::Int, Type::Int], MacroType::Operation(_module));
+        module.def(vec![Type::Float, Type::Float], MacroType::Operation(_module));
+        module.def(vec![Type::Int, Type::Float], MacroType::Operation(_module));
+        module.def(vec![Type::Float, Type::Int], MacroType::Operation(_module));
+        macros.insert(String::from("%"), module);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -270,6 +278,28 @@ fn _div(program: &mut Program) -> Result<(), Error> {
         (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 / v2)),
         (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float(int as f64 / float)),
         (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(float / int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _module(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Int(v1 % v2)),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1 % v2)),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float(int as f64 % float)),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float(float % int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _pow(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Int(v1), Value::Int(v2)) => program.stack.push(Value::Int(v1.pow(v2.max(0) as u32))),
+        (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1.powf(v2))),
+        (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float((int as f64).powf(float))),
+        (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float((float as f64).powi(int.max(0) as i32))),
         _ => panic!("type checking error!!!")
     }
     Ok(())
