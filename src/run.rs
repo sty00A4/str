@@ -203,6 +203,18 @@ impl Program {
         module.def(vec![Type::Int, Type::Float], MacroType::Operation(_module));
         module.def(vec![Type::Float, Type::Int], MacroType::Operation(_module));
         macros.insert(String::from("%"), module);
+        // and
+        let mut and = MacroOverload::new();
+        and.def(vec![Type::Boolean, Type::Boolean], MacroType::Operation(_and));
+        macros.insert(String::from("and"), and);
+        // or
+        let mut or = MacroOverload::new();
+        or.def(vec![Type::Boolean, Type::Boolean], MacroType::Operation(_or));
+        macros.insert(String::from("or"), or);
+        // not
+        let mut not = MacroOverload::new();
+        not.def(vec![Type::Boolean], MacroType::Operation(_not));
+        macros.insert(String::from("not"), not);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -300,6 +312,30 @@ fn _pow(program: &mut Program) -> Result<(), Error> {
         (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Float(v1.powf(v2))),
         (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Float((int as f64).powf(float))),
         (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Float((float as f64).powi(int.max(0) as i32))),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _and(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Boolean(v1), Value::Boolean(v2)) => program.stack.push(Value::Boolean(v1 && v2)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _or(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::Boolean(v1), Value::Boolean(v2)) => program.stack.push(Value::Boolean(v1 || v2)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _not(program: &mut Program) -> Result<(), Error> {
+    let a = program.stack.pop().unwrap();
+    match a {
+        Value::Boolean(v) => program.stack.push(Value::Boolean(!v)),
         _ => panic!("type checking error!!!")
     }
     Ok(())
