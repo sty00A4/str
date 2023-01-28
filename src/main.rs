@@ -46,6 +46,7 @@ fn main() {
                     }
                     Err(e) => { eprintln!("{}", e.display_text(path, input)) }
                 }
+                println!();
             }
         }
     }

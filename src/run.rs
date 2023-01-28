@@ -164,7 +164,7 @@ impl Program {
         let mut over = MacroOverload::new();
         over.def(vec![Type::Any, Type::Any], MacroType::Operation(_over));
         macros.insert(String::from("over"), over);
-        // add
+        // +
         let mut add = MacroOverload::new();
         add.def(vec![Type::Int, Type::Int], MacroType::Operation(_add));
         add.def(vec![Type::Float, Type::Float], MacroType::Operation(_add));
@@ -173,14 +173,14 @@ impl Program {
         add.def(vec![Type::String, Type::String], MacroType::Operation(_add));
         add.def(vec![Type::String, Type::Char], MacroType::Operation(_add));
         macros.insert(String::from("+"), add);
-        // sub
+        // -
         let mut sub = MacroOverload::new();
         sub.def(vec![Type::Int, Type::Int], MacroType::Operation(_sub));
         sub.def(vec![Type::Float, Type::Float], MacroType::Operation(_sub));
         sub.def(vec![Type::Int, Type::Float], MacroType::Operation(_sub));
         sub.def(vec![Type::Float, Type::Int], MacroType::Operation(_sub));
         macros.insert(String::from("-"), sub);
-        // mult
+        // *
         let mut mult = MacroOverload::new();
         mult.def(vec![Type::Int, Type::Int], MacroType::Operation(_mult));
         mult.def(vec![Type::Float, Type::Float], MacroType::Operation(_mult));
@@ -189,14 +189,14 @@ impl Program {
         mult.def(vec![Type::String, Type::Int], MacroType::Operation(_mult));
         mult.def(vec![Type::Char, Type::Int], MacroType::Operation(_mult));
         macros.insert(String::from("*"), mult);
-        // div
+        // /
         let mut div = MacroOverload::new();
         div.def(vec![Type::Int, Type::Int], MacroType::Operation(_div));
         div.def(vec![Type::Float, Type::Float], MacroType::Operation(_div));
         div.def(vec![Type::Int, Type::Float], MacroType::Operation(_div));
         div.def(vec![Type::Float, Type::Int], MacroType::Operation(_div));
         macros.insert(String::from("/"), div);
-        // mod
+        // %
         let mut module = MacroOverload::new();
         module.def(vec![Type::Int, Type::Int], MacroType::Operation(_module));
         module.def(vec![Type::Float, Type::Float], MacroType::Operation(_module));
@@ -215,42 +215,61 @@ impl Program {
         let mut not = MacroOverload::new();
         not.def(vec![Type::Boolean], MacroType::Operation(_not));
         macros.insert(String::from("not"), not);
-        // eq
+        // =
         let mut eq = MacroOverload::new();
         eq.def(vec![Type::Any, Type::Any], MacroType::Operation(_eq));
         macros.insert(String::from("="), eq);
-        // ne
+        // !=
         let mut ne = MacroOverload::new();
         ne.def(vec![Type::Any, Type::Any], MacroType::Operation(_ne));
         macros.insert(String::from("!="), ne);
-        // lt
+        // >
         let mut lt = MacroOverload::new();
         lt.def(vec![Type::Int, Type::Int], MacroType::Operation(_lt));
         lt.def(vec![Type::Float, Type::Float], MacroType::Operation(_lt));
         lt.def(vec![Type::Int, Type::Float], MacroType::Operation(_lt));
         lt.def(vec![Type::Float, Type::Int], MacroType::Operation(_lt));
         macros.insert(String::from("<"), lt);
-        // gt
+        // <
         let mut gt = MacroOverload::new();
         gt.def(vec![Type::Int, Type::Int], MacroType::Operation(_gt));
         gt.def(vec![Type::Float, Type::Float], MacroType::Operation(_gt));
         gt.def(vec![Type::Int, Type::Float], MacroType::Operation(_gt));
         gt.def(vec![Type::Float, Type::Int], MacroType::Operation(_gt));
         macros.insert(String::from(">"), gt);
-        // le
+        // <=
         let mut le = MacroOverload::new();
         le.def(vec![Type::Int, Type::Int], MacroType::Operation(_le));
         le.def(vec![Type::Float, Type::Float], MacroType::Operation(_le));
         le.def(vec![Type::Int, Type::Float], MacroType::Operation(_le));
         le.def(vec![Type::Float, Type::Int], MacroType::Operation(_le));
         macros.insert(String::from("<="), le);
-        // ge
+        // >=
         let mut ge = MacroOverload::new();
         ge.def(vec![Type::Int, Type::Int], MacroType::Operation(_ge));
         ge.def(vec![Type::Float, Type::Float], MacroType::Operation(_ge));
         ge.def(vec![Type::Int, Type::Float], MacroType::Operation(_ge));
         ge.def(vec![Type::Float, Type::Int], MacroType::Operation(_ge));
         macros.insert(String::from(">="), ge);
+
+        // .
+        let mut index = MacroOverload::new();
+        index.def(vec![Type::String, Type::Int], MacroType::Operation(_index));
+        index.def(vec![Type::String, Type::Int, Type::Int], MacroType::Operation(_index_range));
+        macros.insert(String::from("."), index);
+        // rev
+        let mut rev = MacroOverload::new();
+        rev.def(vec![Type::String], MacroType::Operation(_rev));
+        macros.insert(String::from("rev"), rev);
+        // pos
+        let mut pos = MacroOverload::new();
+        pos.def(vec![Type::String, Type::String], MacroType::Operation(_pos));
+        pos.def(vec![Type::String, Type::Char], MacroType::Operation(_pos));
+        macros.insert(String::from("pos"), pos);
+        // remove
+        let mut remove = MacroOverload::new();
+        remove.def(vec![Type::String, Type::Int], MacroType::Operation(_remove));
+        macros.insert(String::from("remove"), remove);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -426,6 +445,87 @@ fn _ge(program: &mut Program) -> Result<(), Error> {
         (Value::Float(v1), Value::Float(v2)) => program.stack.push(Value::Boolean(v1 >= v2)),
         (Value::Int(int), Value::Float(float)) => program.stack.push(Value::Boolean(int as f64 >= float)),
         (Value::Float(float), Value::Int(int)) => program.stack.push(Value::Boolean(float >= int as f64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _index(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    if let (Value::String(string), Value::Int(idx)) = (a, b) {
+        let idx = if idx < 0 {
+            string.len() - idx.abs() as usize % string.len()
+        } else {
+            idx.abs() as usize % string.len()
+        };
+        program.stack.push(Value::Char(string[idx..idx+1].chars().next().unwrap()));
+        Ok(())
+    } else {
+        panic!("type checking error!!!")
+    }
+}
+fn _index_range(program: &mut Program) -> Result<(), Error> {
+    let (c, b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    if let (Value::String(string), Value::Int(start), Value::Int(end)) = (a, b, c) {
+        let start = if start < 0 {
+            string.len() - start.abs() as usize % string.len()
+        } else {
+            start.abs() as usize % string.len()
+        };
+        let end = if end < 0 {
+            string.len() - end.abs() as usize % string.len()
+        } else {
+            end.abs() as usize % string.len()
+        };
+        program.stack.push(Value::String(string[start..end].to_string()));
+        Ok(())
+    } else {
+        panic!("type checking error!!!")
+    }
+}
+fn _rev(program: &mut Program) -> Result<(), Error> {
+    if let Value::String(string) = program.stack.pop().unwrap() {
+        program.stack.push(Value::String(string.chars().rev().collect()));
+        Ok(())
+    } else {
+        panic!("type checking error!!!")
+    }
+}
+fn _pos(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::String(string), Value::Char(char)) => {
+            match string.find(char) {
+                Some(index) => {
+                    program.stack.push(Value::Int(index as i64));
+                    program.stack.push(Value::Boolean(true));
+                }
+                None => program.stack.push(Value::Boolean(false))
+            }
+        }
+        (Value::String(string), Value::String(sub)) => {
+            match string.find(&sub) {
+                Some(index) => {
+                    program.stack.push(Value::Int(index as i64));
+                    program.stack.push(Value::Boolean(true));
+                }
+                None => program.stack.push(Value::Boolean(false))
+            }
+        }
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _remove(program: &mut Program) -> Result<(), Error> {
+    let (b, mut a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::String(mut string), Value::Int(idx)) => {
+            let idx = if idx < 0 {
+                string.len() - idx.abs() as usize % string.len()
+            } else {
+                idx.abs() as usize % string.len()
+            };
+            program.stack.push(Value::Char(string.remove(idx)));
+        }
         _ => panic!("type checking error!!!")
     }
     Ok(())
