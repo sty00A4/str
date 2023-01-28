@@ -1,6 +1,8 @@
 use std::{fmt::{Display, Debug}, collections::HashMap};
 
-use crate::{lexer::Instr, error};
+use crate::{lexer::{Instr, Position, Token}, error::{Error}};
+use crate::error;
+use crate::error_pos;
 
 #[derive(Clone, PartialEq)]
 pub enum Value {
@@ -57,9 +59,10 @@ pub struct Program {
 }
 impl Program {
     pub fn new() -> Self { Self { vars: HashMap::new(), stack: Stack::new() } }
-    pub fn run(&mut self, instrs: Vec<Instr>) -> Result<(), String> {
-        for instr in instrs {
-            match instr {
+    pub fn run(&mut self, tokens: Vec<Token>) -> Result<(), Error> {
+        let mut idx = 0;
+        for token in tokens {
+            match token.instr {
                 Instr::String(string) => self.stack.push(Value::String(string)),
                 Instr::Char(char) => self.stack.push(Value::Char(char)),
                 Instr::Int(int) => self.stack.push(Value::Int(int)),
@@ -70,7 +73,7 @@ impl Program {
                         if let Some(value) = self.stack.pop() {
                             self.vars.insert(id, value);
                         } else {
-                            return error!("cannot take value to {id:?} due to stack underflow")
+                            return error_pos!(&token.pos, "cannot take value to {id:?} due to stack underflow")
                         }
                     }
                 }
@@ -79,24 +82,24 @@ impl Program {
                         if let Some(value) = self.stack.peek() {
                             self.vars.insert(id, value.clone());
                         } else {
-                            return error!("cannot take value to {id:?} due to stack underflow")
+                            return error_pos!(&token.pos, "cannot take value to {id:?} due to stack underflow")
                         }
                     }
                 }
-                Instr::Copy(instr) => match instr.as_ref() {
+                Instr::Copy(token) => match &token.instr {
                     Instr::ID(id) => match self.vars.get(id) {
                         Some(value) => self.stack.push(value.clone()),
-                        None => return error!("unknown id {id:?}")
+                        None => return error_pos!(&token.pos, "unknown id {id:?}")
                     }
                     Instr::CopyTo(ids) => {
-                        for id in ids {
+                        for id in ids.iter().rev() {
                             match self.vars.get(id) {
                                 Some(value) => self.stack.push(value.clone()),
-                                None => return error!("unknown id {id:?}")
+                                None => return error_pos!(&token.pos, "unknown id {id:?}")
                             }
                         }
                     }
-                    _ => return error!("expected identifier or copy-to-indentifiers, got {}", instr.name())
+                    _ => return error_pos!(&token.pos, "expected identifier or copy-to-indentifiers, got {}", token.instr.name())
                 }
                 Instr::ID(id) => match id.as_str() {
                     "print" => {
@@ -111,7 +114,7 @@ impl Program {
                         if let Some(a) = self.stack.peek() {
                             self.stack.push(a.clone());
                         } else {
-                            return error!("cannot perform {id:?} due to stack underflow")
+                            return error_pos!(&token.pos, "cannot perform {id:?} due to stack underflow")
                         }
                     }
                     "swap" => {
@@ -119,15 +122,16 @@ impl Program {
                             self.stack.push(a);
                             self.stack.push(b);
                         } else {
-                            return error!("cannot perform {id:?} due to stack underflow")
+                            return error_pos!(&token.pos, "cannot perform {id:?} due to stack underflow")
                         }
                     }
                     _ => match self.vars.remove(&id) {
                         Some(value) => self.stack.push(value),
-                        None => return error!("unknown id {id:?}")
+                        None => return error_pos!(&token.pos, "unknown id {id:?}")
                     }
                 }
             }
+            idx += 1;
         }
         Ok(())
     }

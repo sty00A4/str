@@ -1,34 +1,41 @@
-use std::fmt::Display;
+use std::fmt::{Display, Debug};
 
-// use std::ops::Range;
+use std::ops::Range;
 use crate::error;
+use crate::error::{Error};
+use crate::error_pos;
 
-// #[derive(Debug, Clone, PartialEq)]
-// pub struct Position {
-//     idx: Range<usize>,
-//     ln: Range<usize>,
-//     col: Range<usize>,
-// }
-// impl Position {
-//     pub fn new(idx: Range<usize>, ln: Range<usize>, col: Range<usize>) -> Self {
-//         Self { idx, ln, col }
-//     }
-//     pub fn extend(&mut self, pos: Position) {
-//         self.idx.end = pos.idx.end;
-//         self.ln.end = pos.ln.end;
-//         self.col.end = pos.col.end;
-//     }
-// }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Position {
+    pub idx: Range<usize>,
+    pub ln: Range<usize>,
+    pub col: Range<usize>,
+}
+impl Position {
+    pub fn new(idx: Range<usize>, ln: Range<usize>, col: Range<usize>) -> Self {
+        Self { idx, ln, col }
+    }
+    pub fn extend(&mut self, pos: Position) {
+        self.idx.end = pos.idx.end;
+        self.ln.end = pos.ln.end;
+        self.col.end = pos.col.end;
+    }
+}
+impl Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.ln.start, self.col.start)
+    }
+}
 
 pub const SYMBOLS: [char; 7] = ['"', '\'', '(', ')', '{', '}', '@'];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instr {
     String(String), Char(char), Int(i64), Float(f64), Boolean(bool),
-    ID(String), Take(Vec<String>), CopyTo(Vec<String>), Copy(Box<Instr>)
+    ID(String), Take(Vec<String>), CopyTo(Vec<String>), Copy(Box<Token>)
 }
 impl Instr {
-    pub fn get(id: String) -> Result<Self, String> {
+    pub fn get(id: String, pos: Position) -> Result<Self, Error> {
         match id.as_str() {
             "true" => Ok(Self::Boolean(true)),
             "false" => Ok(Self::Boolean(false)),
@@ -37,11 +44,11 @@ impl Instr {
                     Ok(number) => Ok(Self::Int(number)),
                     Err(_) => match id.parse::<f64>() {
                         Ok(number) => Ok(Self::Float(number)),
-                        Err(e) => error!("error occurd while parsing the number {id:?}: {e}")
+                        Err(e) => error_pos!(pos, "error occurd while parsing the number {id:?}: {e}")
                     }
                 }
                 Some(_) => Ok(Self::ID(id)),
-                None => error!("empty id")
+                None => error_pos!(pos, "empty id")
             }
         }
     }
@@ -55,7 +62,7 @@ impl Instr {
             Self::ID(_) => format!("identifier"),
             Self::Take(_) => format!("take-into-identifiers"),
             Self::CopyTo(_) => format!("copt-to-identifiers"),
-            Self::Copy(instr) => format!("copy of {}", instr.name()),
+            Self::Copy(token) => format!("copy of {}", token.instr.name()),
         }
     }
 }
@@ -75,6 +82,25 @@ impl Display for Instr {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub struct Token {
+    pub instr: Instr,
+    pub pos: Position
+}
+impl Token {
+    pub fn new(instr: Instr, pos: Position) -> Self { Self { instr, pos } }
+}
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.instr)
+    }
+}
+impl Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.instr)
+    }
+}
+
 pub struct Lexer {
     text: String,
     idx: usize,
@@ -85,6 +111,9 @@ impl Lexer {
     pub fn new(text: String) -> Self { Self { text, idx: 0, ln: 0, col: 0 } }
     pub fn get(&self) -> Option<char> {
         self.text.get(self.idx..self.idx+1)?.chars().next()
+    }
+    pub fn pos(&self) -> Position {
+        Position::new(self.idx..self.idx+1, self.ln..self.ln+1, self.col..self.col+1)
     }
     pub fn advance(&mut self) {
         self.idx += 1;
@@ -100,8 +129,9 @@ impl Lexer {
             self.advance();
         }
     }
-    pub fn next(&mut self) -> Result<Option<Instr>, String> {
+    pub fn next(&mut self) -> Result<Option<Token>, Error> {
         self.advance_ws();
+        let mut pos = self.pos();
         match self.get() {
             Some('"') => {
                 self.advance();
@@ -111,19 +141,21 @@ impl Lexer {
                     string.push(c);
                     self.advance();
                 }
-                if self.get() == None { return error!("unclosed string") }
+                if self.get() == None { return error_pos!(pos, "unclosed string") }
+                pos.extend(self.pos());
                 self.advance();
-                Ok(Some(Instr::String(string)))
+                Ok(Some(Token::new(Instr::String(string), pos)))
             }
             Some('\'') => {
                 self.advance();
                 if let Some(char) = self.get() {
                     self.advance();
-                    if self.get() != Some('\'') { return error!("unclosed character") }
+                    if self.get() != Some('\'') { return error_pos!(pos, "unclosed character") }
+                    pos.extend(self.pos());
                     self.advance();
-                    Ok(Some(Instr::Char(char)))
+                    Ok(Some(Token::new(Instr::Char(char), pos)))
                 } else {
-                    error!("expected character")
+                    error_pos!(pos, "expected character")
                 }
             }
             Some('(') => {
@@ -131,43 +163,46 @@ impl Lexer {
                 let mut ids: Vec<String> = vec![];
                 while let Some(c) = self.get() {
                     if c == ')' { break }
-                    if let Some(instr) = self.next()? {
-                        match instr {
+                    if let Some(token) = self.next()? {
+                        match token.instr {
                             Instr::ID(id) => ids.push(id),
-                            _ => return error!("expected identifier, got {}", instr.name())
+                            _ => return error_pos!(pos, "expected identifier, got {}", token.instr.name())
                         }
                     } else {
-                        return error!("unclosed identifier take")
+                        return error_pos!(pos, "unclosed identifier take")
                     }
                 }
-                if self.get() == None { return error!("unclosed identifier take") }
+                if self.get() == None { return error_pos!(pos, "unclosed identifier take") }
+                pos.extend(self.pos());
                 self.advance();
-                Ok(Some(Instr::Take(ids.iter().rev().map(|id| id.clone()).collect())))
+                Ok(Some(Token::new(Instr::Take(ids.iter().rev().map(|id| id.clone()).collect()), pos)))
             }
             Some('{') => {
                 self.advance();
                 let mut ids: Vec<String> = vec![];
                 while let Some(c) = self.get() {
                     if c == '}' { break }
-                    if let Some(instr) = self.next()? {
-                        match instr {
+                    if let Some(token) = self.next()? {
+                        match token.instr {
                             Instr::ID(id) => ids.push(id),
-                            _ => return error!("expected identifier, got {}", instr.name())
+                            _ => return error_pos!(pos, "expected identifier, got {}", token.instr.name())
                         }
                     } else {
-                        return error!("unclosed identifier copy")
+                        return error_pos!(pos, "unclosed identifier copy")
                     }
                 }
-                if self.get() == None { return error!("unclosed identifier copy") }
+                if self.get() == None { return error_pos!(pos, "unclosed identifier copy") }
+                pos.extend(self.pos());
                 self.advance();
-                Ok(Some(Instr::CopyTo(ids.iter().rev().map(|id| id.clone()).collect())))
+                Ok(Some(Token::new(Instr::CopyTo(ids.iter().rev().map(|id| id.clone()).collect()), pos)))
             }
             Some('@') => {
                 self.advance();
-                if let Some(instr) = self.next()? {
-                    Ok(Some(Instr::Copy(Box::new(instr))))
+                if let Some(token) = self.next()? {
+                    pos.extend(token.pos.clone());
+                    Ok(Some(Token::new(Instr::Copy(Box::new(token)), pos)))
                 } else {
-                    return error!("unexpected end")
+                    return error_pos!(pos, "unexpected end")
                 }
             }
             Some(c) => {
@@ -176,22 +211,23 @@ impl Lexer {
                 while let Some(c) = self.get() {
                     if c.is_whitespace() || SYMBOLS.contains(&c) { break }
                     id.push(c);
+                    pos.extend(self.pos());
                     self.advance();
                 }
-                Ok(Some(Instr::get(id)?))
+                Ok(Some(Token::new(Instr::get(id, pos.clone())?, pos)))
             }
             None => Ok(None)
         }
     }
-    pub fn lex(&mut self) -> Result<Vec<Instr>, String> {
-        let mut instrs = vec![];
-        while let Some(instr) = self.next()? {
-            instrs.push(instr);
+    pub fn lex(&mut self) -> Result<Vec<Token>, Error> {
+        let mut tokens = vec![];
+        while let Some(token) = self.next()? {
+            tokens.push(token);
         }
-        Ok(instrs)
+        Ok(tokens)
     }
 }
 
-pub fn lex(text: String) -> Result<Vec<Instr>, String> {
+pub fn lex(text: String) -> Result<Vec<Token>, Error> {
     Lexer::new(text).lex()
 }
