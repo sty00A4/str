@@ -133,7 +133,7 @@ impl Program {
                             MacroType::Operation(func) => func(self)?,
                         }
                         None => return error_pos!(&token.pos,
-                            "no macro definition {id:?} found with current stack, following macros are defined:\n{}", self.display_macro(&id))
+                            "no macro definition {id:?} found with current stack, following macros are defined:\n{}\n", self.display_macro(&id))
                     }
                     None => match self.vars.remove(&id) {
                         Some(value) => self.stack.push(value),
@@ -155,6 +155,10 @@ impl Program {
         let mut copy = MacroOverload::new();
         copy.def(vec![Type::Any], MacroType::Operation(_copy));
         macros.insert(String::from("copy"), copy);
+        // swap
+        let mut swap = MacroOverload::new();
+        swap.def(vec![Type::Any, Type::Any], MacroType::Operation(_swap));
+        macros.insert(String::from("swap"), swap);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
