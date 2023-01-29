@@ -15,6 +15,9 @@ impl Position {
     pub fn new(idx: Range<usize>, ln: Range<usize>, col: Range<usize>) -> Self {
         Self { idx, ln, col }
     }
+    pub fn zero() -> Self {
+        Self { idx: 0..1, ln: 0..1, col: 0..1 }
+    }
     pub fn extend(&mut self, pos: Position) {
         self.idx.end = pos.idx.end;
         self.ln.end = pos.ln.end;
@@ -27,18 +30,23 @@ impl Display for Position {
     }
 }
 
-pub const SYMBOLS: [char; 7] = ['"', '\'', '(', ')', '{', '}', '@'];
+pub const SYMBOLS: [char; 8] = ['"', '\'', '(', ')', '{', '}', '@', ';'];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instr {
     String(String), Char(char), Int(i64), Float(f64), Boolean(bool),
-    ID(String), Take(Vec<String>), CopyTo(Vec<String>), Copy(Box<Token>)
+    ID(String), Take(Vec<String>), CopyTo(Vec<String>), Copy(Box<Token>),
+    End, If, Else, Repeat, Macro
 }
 impl Instr {
     pub fn get(id: String, pos: Position) -> Result<Self, Error> {
         match id.as_str() {
             "true" => Ok(Self::Boolean(true)),
             "false" => Ok(Self::Boolean(false)),
+            "if" => Ok(Self::If),
+            "else" => Ok(Self::Else),
+            "repeat" => Ok(Self::Repeat),
+            "macro" => Ok(Self::Macro),
             _ => match id.chars().next() {
                 Some(c) if c.is_digit(10) => match id.parse::<i64>() {
                     Ok(number) => Ok(Self::Int(number)),
@@ -63,6 +71,11 @@ impl Instr {
             Self::Take(_) => format!("take-into-identifiers"),
             Self::CopyTo(_) => format!("copt-to-identifiers"),
             Self::Copy(token) => format!("copy of {}", token.instr.name()),
+            Self::End => format!("end-control-flow instruction"),
+            Self::If => format!("if-control-flow instruction"),
+            Self::Else => format!("else-control-flow instruction"),
+            Self::Repeat => format!("repeat-control-flow instruction"),
+            Self::Macro => format!("macro instruction"),
         }
     }
 }
@@ -78,6 +91,11 @@ impl Display for Instr {
             Self::Take(ids) => write!(f, "({})", ids.iter().map(|id| id.to_string()).collect::<Vec<String>>().join(" ")),
             Self::CopyTo(ids) => write!(f, "{{{}}}", ids.iter().map(|id| id.to_string()).collect::<Vec<String>>().join(" ")),
             Self::Copy(instr) => write!(f, "@{instr}"),
+            Self::End => write!(f, ";"),
+            Self::If => write!(f, "if"),
+            Self::Else => write!(f, "else"),
+            Self::Repeat => write!(f, "repeat"),
+            Self::Macro => write!(f, "macro"),
         }
     }
 }
@@ -204,6 +222,10 @@ impl Lexer {
                 } else {
                     return error_pos!(pos, "unexpected end")
                 }
+            }
+            Some(';') => {
+                self.advance();
+                Ok(Some(Token::new(Instr::End, pos)))
             }
             Some(c) => {
                 self.advance();

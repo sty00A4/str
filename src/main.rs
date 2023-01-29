@@ -3,6 +3,7 @@ use std::{env, process::exit, io::{stdout, Write, stdin}, fs};
 
 mod error;
 mod lexer;
+mod parser;
 mod value;
 mod run;
 
@@ -34,9 +35,12 @@ fn main() {
             Ok(text) => {
                 let mut program = run::Program::std_program();
                 match lexer::lex(text.clone()) {
-                    Ok(tokens) => match program.run(tokens) {
-                        Ok(_) => println!("{}", program.stack),
-                        Err(e) => { eprintln!("{}\n{}", program.stack, e.display_text(path, text)) }
+                    Ok(tokens) => match parser::parse(tokens) {
+                        Ok(nodes) => match program.run(nodes) {
+                            Ok(_) => println!("{}", program.stack),
+                            Err(e) => { eprintln!("{}\n{}", program.stack, e.display_text(path, text)) }
+                        }
+                        Err(e) => { eprintln!("{}", e.display_text(path, text)) }
                     }
                     Err(e) => { eprintln!("{}", e.display_text(path, text)) }
                 }
@@ -52,9 +56,12 @@ fn main() {
                 let _ = stdout().flush();
                 let _ = stdin().read_line(&mut input);
                 match lexer::lex(input.clone()) {
-                    Ok(tokens) => match program.run(tokens) {
-                        Ok(_) => println!("{}", program.stack),
-                        Err(e) => { eprintln!("{}\n{}", program.stack, e.display_text(path, input)) }
+                    Ok(tokens) => match parser::parse(tokens) {
+                        Ok(nodes) => match program.run(nodes) {
+                            Ok(_) => println!("{}", program.stack),
+                            Err(e) => { eprintln!("{}\n{}", program.stack, e.display_text(path, input)) }
+                        }
+                        Err(e) => { eprintln!("{}", e.display_text(path, input)) }
                     }
                     Err(e) => { eprintln!("{}", e.display_text(path, input)) }
                 }

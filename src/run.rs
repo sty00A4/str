@@ -1,6 +1,6 @@
 use std::{fmt::{Display, Debug}, collections::HashMap, hash::Hash};
 
-use crate::{lexer::{Instr, Position, Token}, error::{Error}};
+use crate::{lexer::{Instr, Position, Token}, error::{Error}, parser::{Node, NodeType}};
 use crate::error;
 use crate::error_pos;
 use crate::value::{Type, Value};
@@ -29,7 +29,7 @@ impl Display for Stack {
 }
 
 pub enum MacroType {
-    Macro(Vec<Token>), Operation(fn(&mut Program) -> Result<(), Error>)
+    Macro(Node), Operation(fn(&mut Program) -> Result<(), Error>)
 }
 
 pub struct MacroOverload {
@@ -85,64 +85,93 @@ impl Program {
             String::from("no definition found")
         }
     }
-    pub fn run(&mut self, tokens: Vec<Token>) -> Result<(), Error> {
+    pub fn run(&mut self, node: Node) -> Result<(), Error> {
         let mut idx = 0;
-        for token in tokens {
-            match token.instr {
-                Instr::String(string) => self.stack.push(Value::String(string)),
-                Instr::Char(char) => self.stack.push(Value::Char(char)),
-                Instr::Int(int) => self.stack.push(Value::Int(int)),
-                Instr::Float(float) => self.stack.push(Value::Float(float)),
-                Instr::Boolean(boolean) => self.stack.push(Value::Boolean(boolean)),
-                Instr::Take(ids) => {
-                    for id in ids {
-                        if let Some(value) = self.stack.pop() {
-                            self.vars.insert(id, value);
-                        } else {
-                            return error_pos!(&token.pos, "cannot take value to {id:?} due to stack underflow")
-                        }
-                    }
+        match node.node {
+            NodeType::Chunk(nodes) => {
+                for node in nodes {
+                    self.run(node)?;
                 }
-                Instr::CopyTo(ids) => {
-                    for id in ids {
-                        if let Some(value) = self.stack.peek() {
-                            self.vars.insert(id, value.clone());
-                        } else {
-                            return error_pos!(&token.pos, "cannot take value to {id:?} due to stack underflow")
-                        }
-                    }
-                }
-                Instr::Copy(token) => match &token.instr {
-                    Instr::ID(id) => match self.vars.get(id) {
-                        Some(value) => self.stack.push(value.clone()),
-                        None => return error_pos!(&token.pos, "unknown id {id:?}")
-                    }
-                    Instr::CopyTo(ids) => {
-                        for id in ids.iter().rev() {
-                            match self.vars.get(id) {
-                                Some(value) => self.stack.push(value.clone()),
-                                None => return error_pos!(&token.pos, "unknown id {id:?}")
-                            }
-                        }
-                    }
-                    _ => return error_pos!(&token.pos, "expected identifier or copy-to-indentifiers, got {}", token.instr.name())
-                }
-                Instr::ID(id) => match self.macros.get(&id) {
-                    Some(macros) => match macros.get(&self.stack) {
-                        Some(macro_type) => match macro_type {
-                            MacroType::Macro(tokens) => self.run(tokens.clone())?,
-                            MacroType::Operation(func) => func(self)?,
-                        }
-                        None => return error_pos!(&token.pos,
-                            "no macro definition {id:?} found with current stack, following macros are defined:\n{}\n", self.display_macro(&id))
-                    }
-                    None => match self.vars.remove(&id) {
-                        Some(value) => self.stack.push(value),
-                        None => return error_pos!(&token.pos, "unknown id {id:?}")
+            }
+            NodeType::String(string) => self.stack.push(Value::String(string)),
+            NodeType::Char(char) => self.stack.push(Value::Char(char)),
+            NodeType::Int(int) => self.stack.push(Value::Int(int)),
+            NodeType::Float(float) => self.stack.push(Value::Float(float)),
+            NodeType::Boolean(boolean) => self.stack.push(Value::Boolean(boolean)),
+            NodeType::Take(ids) => {
+                for id in ids {
+                    if let Some(value) = self.stack.pop() {
+                        self.vars.insert(id, value);
+                    } else {
+                        return error_pos!(&node.pos, "cannot take value to {id:?} due to stack underflow")
                     }
                 }
             }
-            idx += 1;
+            NodeType::CopyTo(ids) => {
+                for id in ids {
+                    if let Some(value) = self.stack.peek() {
+                        self.vars.insert(id, value.clone());
+                    } else {
+                        return error_pos!(&node.pos, "cannot take value to {id:?} due to stack underflow")
+                    }
+                }
+            }
+            NodeType::Copy(token) => match &token.instr {
+                Instr::ID(id) => match self.vars.get(id) {
+                    Some(value) => self.stack.push(value.clone()),
+                    None => return error_pos!(&token.pos, "unknown id {id:?}")
+                }
+                Instr::CopyTo(ids) => {
+                    for id in ids.iter().rev() {
+                        match self.vars.get(id) {
+                            Some(value) => self.stack.push(value.clone()),
+                            None => return error_pos!(&token.pos, "unknown id {id:?}")
+                        }
+                    }
+                }
+                _ => return error_pos!(&token.pos, "expected identifier or copy-to-indentifiers, got {}", token.instr.name())
+            }
+            NodeType::ID(id) => match self.macros.get(&id) {
+                Some(macros) => match macros.get(&self.stack) {
+                    Some(macro_type) => match macro_type {
+                        MacroType::Macro(node) => self.run(node.clone())?,
+                        MacroType::Operation(func) => func(self)?,
+                    }
+                    None => return error_pos!(&node.pos,
+                        "no macro definition {id:?} found with current stack, following macros are defined:\n{}\n", self.display_macro(&id))
+                }
+                None => match self.vars.remove(&id) {
+                    Some(value) => self.stack.push(value),
+                    None => return error_pos!(&node.pos, "unknown id {id:?}")
+                }
+            }
+            NodeType::If(case_node, else_node) => {
+                let Some(cond) = self.stack.pop() else {
+                    return error_pos!(&node.pos, "couldn't perform if-control-flow operation due to stack underflow");
+                };
+                if let Value::Boolean(cond) = cond {
+                    if cond {
+                        self.run(*case_node);
+                    } else if let Some(else_node) = else_node {
+                        self.run(*else_node);
+                    }
+                } else {
+                    return error_pos!(&node.pos, "expected a boolean value on top of the stack, got {}", cond.typ())
+                }
+            }
+            NodeType::Repeat(body) => {
+                let Some(count) = self.stack.pop() else {
+                    return error_pos!(&node.pos, "couldn't perform if-control-flow operation due to stack underflow");
+                };
+                if let Value::Int(count) = count {
+                    for _ in 0..count {
+                        self.run(*body.clone());
+                    }
+                } else {
+                    return error_pos!(&node.pos, "expected a boolean value on top of the stack, got {}", count.typ())
+                }
+            }
+            NodeType::Macro(name, types, body) => todo!("macro definition"),
         }
         Ok(())
     }
