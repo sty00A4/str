@@ -30,7 +30,7 @@ impl Display for Position {
     }
 }
 
-pub const SYMBOLS: [char; 8] = ['"', '\'', '(', ')', '{', '}', '@', ';'];
+pub const SYMBOLS: [char; 7] = ['"', '\'', '(', ')', '{', '}', '@'];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instr {
@@ -43,6 +43,7 @@ impl Instr {
         match id.as_str() {
             "true" => Ok(Self::Boolean(true)),
             "false" => Ok(Self::Boolean(false)),
+            "end" => Ok(Self::End),
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "repeat" => Ok(Self::Repeat),
@@ -222,10 +223,6 @@ impl Lexer {
                 } else {
                     return error_pos!(pos, "unexpected end")
                 }
-            }
-            Some(';') => {
-                self.advance();
-                Ok(Some(Token::new(Instr::End, pos)))
             }
             Some('#') => {
                 while let Some(c) = self.get() {
