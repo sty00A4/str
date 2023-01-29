@@ -148,6 +148,14 @@ impl Program {
     }
     pub fn std_program() -> Self {
         let mut macros = HashMap::new();
+        // LEN
+        let mut stack_len = MacroOverload::new();
+        stack_len.def(vec![Type::String], MacroType::Operation(_stack_len));
+        macros.insert(String::from("LEN"), stack_len);
+        // len
+        let mut len = MacroOverload::new();
+        len.def(vec![], MacroType::Operation(_len));
+        macros.insert(String::from("len"), len);
         // drop
         let mut drop = MacroOverload::new();
         drop.def(vec![Type::Any], MacroType::Operation(_drop));
@@ -270,11 +278,33 @@ impl Program {
         let mut remove = MacroOverload::new();
         remove.def(vec![Type::String, Type::Int], MacroType::Operation(_remove));
         macros.insert(String::from("remove"), remove);
+        // count
+        let mut count = MacroOverload::new();
+        count.def(vec![Type::String, Type::Char], MacroType::Operation(_count));
+        count.def(vec![Type::String, Type::String], MacroType::Operation(_count));
+        macros.insert(String::from("count"), count);
+        // split
+        let mut split = MacroOverload::new();
+        split.def(vec![Type::String, Type::Char], MacroType::Operation(_split));
+        split.def(vec![Type::String, Type::String], MacroType::Operation(_split));
+        macros.insert(String::from("split"), split);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
 }
 
+fn _stack_len(program: &mut Program) -> Result<(), Error> {
+    program.stack.push(Value::Int(program.stack.len() as i64));
+    Ok(())
+}
+fn _len(program: &mut Program) -> Result<(), Error> {
+    let a = program.stack.pop().unwrap();
+    match a {
+        Value::String(string) => program.stack.push(Value::Int(string.len() as i64)),
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
 fn _drop(program: &mut Program) -> Result<(), Error> {
     program.stack.pop();
     Ok(())
@@ -525,6 +555,54 @@ fn _remove(program: &mut Program) -> Result<(), Error> {
                 idx.abs() as usize % string.len()
             };
             program.stack.push(Value::Char(string.remove(idx)));
+        }
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _count(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::String(string), Value::Char(count_char)) => {
+            let mut count: usize = 0;
+            for char in string.chars() {
+                if char == count_char {
+                    count += 1;
+                }
+            }
+            program.stack.push(Value::Int(count as i64));
+        }
+        (Value::String(string), Value::String(count_string)) => {
+            let mut count: usize = 0;
+            for idx in 0..string.len() {
+                if string.get(idx..idx+count_string.len()) == Some(count_string.as_str()) {
+                    count += 1;
+                }
+            }
+            program.stack.push(Value::Int(count as i64));
+        }
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _split(program: &mut Program) -> Result<(), Error> {
+    let (b, a) = (program.stack.pop().unwrap(), program.stack.pop().unwrap());
+    match (a, b) {
+        (Value::String(string), Value::Char(pattern)) => {
+            let mut parts: Vec<&str> = string.split(pattern).collect();
+            let len = parts.len();
+            for part in parts {
+                program.stack.push(Value::String(part.to_string()));
+            }
+            program.stack.push(Value::Int(len as i64));
+        }
+        (Value::String(string), Value::String(pattern)) => {
+            let mut parts: Vec<&str> = string.split(pattern.as_str()).collect();
+            let len = parts.len();
+            for part in parts {
+                program.stack.push(Value::String(part.to_string()));
+            }
+            program.stack.push(Value::Int(len as i64));
         }
         _ => panic!("type checking error!!!")
     }

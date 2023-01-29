@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::{env, process::exit, io::{stdout, Write, stdin}};
+use std::{env, process::exit, io::{stdout, Write, stdin}, fs};
 
 mod error;
 mod lexer;
@@ -30,7 +30,19 @@ fn main() {
     let mut args = args.iter();
     args.next();
     match args.next() {
-        Some(arg) => { eprintln!("unrecognized argument {arg:?}"); exit(1) }
+        Some(path) => match fs::read_to_string(path) {
+            Ok(text) => {
+                let mut program = run::Program::std_program();
+                match lexer::lex(text.clone()) {
+                    Ok(tokens) => match program.run(tokens) {
+                        Ok(_) => println!("{}", program.stack),
+                        Err(e) => { eprintln!("{}\n{}", program.stack, e.display_text(path, text)) }
+                    }
+                    Err(e) => { eprintln!("{}", e.display_text(path, text)) }
+                }
+            }
+            Err(e) => { eprintln!("error occurd while reading the file {path:?}: {e}"); exit(1) }
+        }
         None => {
             let mut program = run::Program::std_program();
             let path = &"<stdin>".to_string();

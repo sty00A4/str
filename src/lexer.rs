@@ -23,7 +23,7 @@ impl Position {
 }
 impl Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.ln.start, self.col.start)
+        write!(f, "{}:{}", self.ln.start + 1, self.col.start + 1)
     }
 }
 
