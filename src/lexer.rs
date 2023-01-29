@@ -227,6 +227,13 @@ impl Lexer {
                 self.advance();
                 Ok(Some(Token::new(Instr::End, pos)))
             }
+            Some('#') => {
+                while let Some(c) = self.get() {
+                    if c == '\n' { self.advance(); break }
+                    self.advance();
+                }
+                self.next()
+            }
             Some(c) => {
                 self.advance();
                 let mut id = String::from(c);

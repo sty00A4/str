@@ -179,11 +179,11 @@ impl Program {
         let mut macros = HashMap::new();
         // LEN
         let mut stack_len = MacroOverload::new();
-        stack_len.def(vec![Type::String], MacroType::Operation(_stack_len));
+        stack_len.def(vec![], MacroType::Operation(_stack_len));
         macros.insert(String::from("LEN"), stack_len);
         // len
         let mut len = MacroOverload::new();
-        len.def(vec![], MacroType::Operation(_len));
+        len.def(vec![Type::String], MacroType::Operation(_len));
         macros.insert(String::from("len"), len);
         // drop
         let mut drop = MacroOverload::new();
