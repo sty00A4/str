@@ -119,13 +119,19 @@ impl Program {
             NodeType::Copy(token) => match &token.instr {
                 Instr::ID(id) => match self.vars.get(id) {
                     Some(value) => self.stack.push(value.clone()),
-                    None => return error_pos!(&token.pos, "unknown id {id:?}")
+                    None => match self.macros.get(id) {
+                        Some(_) => return error_pos!(&token.pos, "cannot copy a macro, {id:?} is defined as a macro"),
+                        None => return error_pos!(&token.pos, "unknown id {id:?}")
+                    }
                 }
                 Instr::CopyTo(ids) => {
                     for id in ids.iter().rev() {
                         match self.vars.get(id) {
                             Some(value) => self.stack.push(value.clone()),
-                            None => return error_pos!(&token.pos, "unknown id {id:?}")
+                            None => match self.macros.get(id) {
+                                Some(_) => return error_pos!(&token.pos, "cannot copy a macro, {id:?} is defined as a macro"),
+                                None => return error_pos!(&token.pos, "unknown id {id:?}")
+                            }
                         }
                     }
                 }
