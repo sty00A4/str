@@ -317,6 +317,11 @@ impl Program {
         split.def(vec![Type::String, Type::Char], MacroType::Operation(_split));
         split.def(vec![Type::String, Type::String], MacroType::Operation(_split));
         macros.insert(String::from("split"), split);
+        // join
+        let mut join = MacroOverload::new();
+        join.def(vec![Type::Char], MacroType::Operation(_join));
+        join.def(vec![Type::String], MacroType::Operation(_join));
+        macros.insert(String::from("join"), join);
 
         Self { vars: HashMap::new(), macros, stack: Stack::new() }
     }
@@ -632,6 +637,30 @@ fn _split(program: &mut Program) -> Result<(), Error> {
                 program.stack.push(Value::String(part.to_string()));
             }
             program.stack.push(Value::Int(len as i64));
+        }
+        _ => panic!("type checking error!!!")
+    }
+    Ok(())
+}
+fn _join(program: &mut Program) -> Result<(), Error> {
+    let a = program.stack.pop().unwrap();
+    let len = program.stack.len();
+    let mut strings = vec![];
+    for _ in 0..len {
+        let Some(value) = program.stack.pop() else { break };
+        if let Value::String(value) = value {
+            strings.push(value);
+        } else {
+            strings.push(value.to_string())
+        }
+    }
+    let strings: Vec<String> = strings.iter().rev().map(|s| s.clone()).collect();
+    match a {
+        Value::Char(char) => {
+            program.stack.push(Value::String(strings.join(char.to_string().as_str())));
+        }
+        Value::String(string) => {
+            program.stack.push(Value::String(strings.join(string.as_str())));
         }
         _ => panic!("type checking error!!!")
     }
